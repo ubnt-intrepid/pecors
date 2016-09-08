@@ -95,7 +95,7 @@ impl PecorsClient {
               }
               Key::Esc => true,
               Key::Backspace => {
-                if self.query.len() == 0 {
+                if ! self.query.is_empty() {
                   let idx = self.query.len() - 1;
                   self.query.remove(idx);
                   is_update = true;
