@@ -2,8 +2,9 @@ extern crate rustbox;
 extern crate regex;
 
 use std::default::Default;
-use rustbox::{Color, RustBox, Event, Key};
 use std::io::BufRead;
+use rustbox::{Color, RustBox, Key};
+use rustbox::Event::KeyEvent;
 
 enum Status {
   Selected(String),
@@ -19,6 +20,7 @@ struct PecorsClient {
   render_items: Vec<String>,
   filtered: Vec<String>,
   query: String,
+  query_header: String,
   selected: isize,
   cursor: isize,
   offset: usize,
@@ -32,6 +34,7 @@ impl PecorsClient {
       render_items: Vec::new(),
       filtered: Vec::new(),
       query: String::new(),
+      query_header: "QUERY> ".to_owned(),
       selected: 0,
       cursor: 0,
       offset: 0,
@@ -56,70 +59,69 @@ impl PecorsClient {
 
   fn handle_event(&mut self) -> Status {
     match self.term.poll_event(false) {
-      Ok(Event::KeyEvent(key)) => {
-        match key {
-          Key::Enter => {
-            println!("match!");
-            return Selected(self.render_items[self.offset + self.selected as usize].clone());
-          }
-          Key::Esc => return Escaped,
-
-          Key::Backspace => {
-            if !self.query.is_empty() {
-              let idx = self.query.len() - 1;
-              self.query.remove(idx);
-              self.apply_filter();
-            }
-          }
-
-          Key::Up => {
-            if self.selected > -1 {
-              self.selected -= 1;
-            }
-            if self.cursor > 0 {
-              self.cursor -= 1;
-            }
-
-            if self.selected == -1 {
-              self.selected += 1;
-              if self.offset > 0 {
-                self.offset -= 1;
-                self.render_items = Vec::from(&self.filtered[(self.offset as usize)..]);
-              }
-            }
-          }
-
-          Key::Down => {
-            if self.cursor < (self.render_items.len() - 1) as isize {
-              self.cursor += 1;
-            }
-            if (self.render_items.len() < self.term.height() - 1) &&
-               (self.selected < self.render_items.len() as isize) {
-              self.selected += 1;
-            } else if (self.render_items.len() > self.term.height() - 1) &&
-                      (self.selected < (self.term.height() - 1) as isize) {
-              self.selected += 1;
-            }
-
-            if self.selected == (self.term.height() - 1) as isize {
-              self.selected -= 1;
-              if self.offset < self.filtered.len() - 1 {
-                self.offset += 1;
-                self.render_items = Vec::from(&self.filtered[(self.offset as usize)..]);
-              }
-            }
-          }
-
-          Key::Char(c) => {
-            self.query.push(c);
-            self.apply_filter();
-          }
-          _ => (),
-        }
+      Ok(KeyEvent(Key::Enter)) => {
+        return Selected(self.render_items[self.offset + self.selected as usize].clone())
       }
-      _ => (),
+      Ok(KeyEvent(Key::Esc)) => return Escaped,
+      Ok(KeyEvent(Key::Up)) => self.cursor_up(),
+      Ok(KeyEvent(Key::Down)) => self.cursor_down(),
+      Ok(KeyEvent(Key::Backspace)) => self.remove_query(),
+      Ok(KeyEvent(Key::Char(c))) => self.append_query(c),
+      Ok(_) => (),
+      Err(err) => panic!("Error during handle event: {:?}", err),
     }
     Continue
+  }
+
+  fn append_query(&mut self, c: char) {
+    self.query.push(c);
+    self.apply_filter();
+  }
+
+  fn remove_query(&mut self) {
+    if !self.query.is_empty() {
+      let idx = self.query.len() - 1;
+      self.query.remove(idx);
+      self.apply_filter();
+    }
+  }
+
+  fn cursor_up(&mut self) {
+    if self.selected > -1 {
+      self.selected -= 1;
+    }
+    if self.cursor > 0 {
+      self.cursor -= 1;
+    }
+
+    if self.selected == -1 {
+      self.selected += 1;
+      if self.offset > 0 {
+        self.offset -= 1;
+        self.render_items = Vec::from(&self.filtered[(self.offset as usize)..]);
+      }
+    }
+  }
+
+  fn cursor_down(&mut self) {
+    if self.cursor < (self.render_items.len() - 1) as isize {
+      self.cursor += 1;
+    }
+    if (self.render_items.len() < self.term.height() - 1) &&
+       (self.selected < self.render_items.len() as isize) {
+      self.selected += 1;
+    } else if (self.render_items.len() > self.term.height() - 1) &&
+              (self.selected < (self.term.height() - 1) as isize) {
+      self.selected += 1;
+    }
+
+    if self.selected == (self.term.height() - 1) as isize {
+      self.selected -= 1;
+      if self.offset < self.filtered.len() - 1 {
+        self.offset += 1;
+        self.render_items = Vec::from(&self.filtered[(self.offset as usize)..]);
+      }
+    }
   }
 
   fn apply_filter(&mut self) {
@@ -151,7 +153,7 @@ impl PecorsClient {
   }
 
   fn print_query(&self) {
-    let query_str: String = format!("QUERY> {}", self.query);
+    let query_str: String = format!("{}{}", self.query_header, self.query);
 
     for x in 0..(self.term.width()) {
       let ch = query_str.chars().nth(x).unwrap_or(' ');
