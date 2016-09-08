@@ -5,7 +5,6 @@ use std::default::Default;
 use rustbox::{Color, RustBox, Event, Key};
 use std::io::BufRead;
 
-
 enum Status {
   Selected(String),
   Escaped,
@@ -154,38 +153,28 @@ impl PecorsClient {
   fn print_query(&self) {
     let query_str: String = format!("QUERY> {}", self.query);
 
-    let width = self.term.width();
-    for x in 0..width {
-      let c = query_str.chars().nth(x).unwrap_or(' ');
-      if x == query_str.len() {
-        self.term.print_char(x, 0, rustbox::RB_NORMAL, Color::White, Color::White, c);
+    for x in 0..(self.term.width()) {
+      let ch = query_str.chars().nth(x).unwrap_or(' ');
+      let (fg, bg) = if x == query_str.len() {
+        (Color::White, Color::White)
       } else {
-        self.term.print_char(x, 0, rustbox::RB_NORMAL, Color::White, Color::Black, c);
-      }
+        (Color::White, Color::Black)
+      };
+      self.term.print_char(x, 0, rustbox::RB_NORMAL, fg, bg, ch);
     }
   }
 
   fn print_line(&self, y: usize, item: String, selected: bool) {
     let y_offset = 1;
+    let (fg, bg) = if selected {
+      (Color::Red, Color::White)
+    } else {
+      (Color::White, Color::Black)
+    };
 
-    let width = self.term.width();
-    for x in 0..width {
-      let c = item.chars().nth(x).unwrap_or(' ');
-      if selected {
-        self.term.print_char(x,
-                             y + y_offset,
-                             rustbox::RB_NORMAL,
-                             Color::Red,
-                             Color::White,
-                             c);
-      } else {
-        self.term.print_char(x,
-                             y + y_offset,
-                             rustbox::RB_NORMAL,
-                             Color::White,
-                             Color::Black,
-                             c);
-      }
+    for x in 0..(self.term.width()) {
+      let ch = item.chars().nth(x).unwrap_or(' ');
+      self.term.print_char(x, y + y_offset, rustbox::RB_NORMAL, fg, bg, ch);
     }
   }
 }
@@ -199,7 +188,6 @@ fn main() {
   let term = RustBox::init(Default::default()).unwrap();
 
   let selected = PecorsClient::new(inputs, term).select_item();
-
   match selected {
     Some(selected) => println!("{}", selected),
     None => (),
