@@ -3,6 +3,6 @@ name = "pecors"
 version = "0.0.1"
 authors = ["ubuntu"]
 
-[dependencies.rustbox]
-git = "https://github.com/gchp/rustbox.git"
-
+[dependencies]
+regex = "*"
+rustbox = "*"
