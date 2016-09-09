@@ -116,45 +116,44 @@ impl PecorsClient {
       self.selected += 1;
       if self.offset > 0 {
         self.offset -= 1;
-        self.rendered = Vec::from(&self.filtered[(self.offset as usize)..]);
+        self.rendered = Vec::from(&self.filtered[(self.offset)..]);
       }
     }
   }
 
   fn cursor_down(&mut self) {
-    if self.cursor < (self.rendered.len() - 1) as isize {
+    let height = self.term.height();
+
+    if (self.cursor as usize) < self.rendered.len() - 1 {
       self.cursor += 1;
     }
-    if (self.rendered.len() < self.term.height() - 1) && (self.selected < self.rendered.len() as isize) {
-      self.selected += 1;
-    } else if (self.rendered.len() > self.term.height() - 1) && (self.selected < (self.term.height() - 1) as isize) {
+
+    if ((self.rendered.len() < height - 1) && (self.selected_coord() < self.rendered.len())) ||
+       ((self.rendered.len() > height - 1) && (self.selected_coord() < height - 1)) {
       self.selected += 1;
     }
 
-    if self.selected == (self.term.height() - 1) as isize {
+    if self.selected_coord() == height - 1 {
       self.selected -= 1;
       if self.offset < self.filtered.len() - 1 {
         self.offset += 1;
-        self.rendered = Vec::from(&self.filtered[(self.offset as usize)..]);
+        self.rendered = Vec::from(&self.filtered[(self.offset)..]);
       }
     }
   }
 
   fn apply_filter(&mut self) {
-    self.filtered = self.filter_by_regex();
-    self.rendered = self.filtered.clone();
-    self.selected = 0;
-    self.cursor = 0;
-    self.offset = 0;
-  }
-
-  fn filter_by_regex(&self) -> Vec<String> {
-    if self.query.len() == 0 {
+    self.filtered = if self.query.len() == 0 {
       self.stdin.clone()
     } else {
       let re = Regex::new(self.query.as_str()).unwrap();
       self.stdin.iter().filter(|&input| re.is_match(input)).cloned().collect()
-    }
+    };
+
+    self.rendered = self.filtered.clone();
+    self.selected = 0;
+    self.cursor = 0;
+    self.offset = 0;
   }
 
   fn render_items(&self) {
