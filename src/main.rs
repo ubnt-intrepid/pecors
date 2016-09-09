@@ -1,7 +1,7 @@
 extern crate rustbox;
 extern crate regex;
 
-use std::default::Default;
+use std::cmp::{min, max};
 use std::io::BufRead;
 use rustbox::{Color, RustBox, Key};
 use rustbox::Event::KeyEvent;
@@ -17,15 +17,11 @@ use Status::*;
 
 struct PecorsClient {
   term: RustBox,
-  query_header: String,
-
+  prompt: String,
   query: String,
-
   stdin: Vec<String>,
-  rendered: Vec<String>,
   filtered: Vec<String>,
-  selected: isize,
-  cursor: isize,
+  cursor: usize,
   offset: usize,
 }
 
@@ -34,11 +30,9 @@ impl PecorsClient {
     PecorsClient {
       term: term,
       stdin: stdin,
-      rendered: Vec::new(),
       filtered: Vec::new(),
       query: String::new(),
-      query_header: "QUERY> ".to_owned(),
-      selected: 0,
+      prompt: "QUERY> ".to_owned(),
       cursor: 0,
       offset: 0,
     }
@@ -80,15 +74,11 @@ impl PecorsClient {
   }
 
   fn query_str(&self) -> String {
-    format!("{}{}", self.query_header, self.query)
+    format!("{}{}", self.prompt, self.query)
   }
 
   fn selected_text(&self) -> String {
-    self.rendered[self.offset + self.selected as usize].clone()
-  }
-
-  fn selected_coord(&self) -> usize {
-    self.selected as usize
+    self.filtered[self.cursor + self.offset].clone()
   }
 
   fn append_query(&mut self, c: char) {
@@ -105,40 +95,27 @@ impl PecorsClient {
   }
 
   fn cursor_up(&mut self) {
-    if self.selected > -1 {
-      self.selected -= 1;
-    }
-    if self.cursor > 0 {
-      self.cursor -= 1;
-    }
-
-    if self.selected == -1 {
-      self.selected += 1;
+    if self.cursor == 0 {
       if self.offset > 0 {
-        self.offset -= 1;
-        self.rendered = Vec::from(&self.filtered[(self.offset)..]);
+        self.offset -= 1
       }
+    } else {
+      self.cursor -= 1;
     }
   }
 
   fn cursor_down(&mut self) {
     let height = self.term.height();
 
-    if (self.cursor as usize) < self.rendered.len() - 1 {
-      self.cursor += 1;
-    }
-
-    if ((self.rendered.len() < height - 1) && (self.selected_coord() < self.rendered.len())) ||
-       ((self.rendered.len() > height - 1) && (self.selected_coord() < height - 1)) {
-      self.selected += 1;
-    }
-
-    if self.selected_coord() == height - 1 {
-      self.selected -= 1;
-      if self.offset < self.filtered.len() - 1 {
-        self.offset += 1;
-        self.rendered = Vec::from(&self.filtered[(self.offset)..]);
-      }
+    if self.cursor == height - self.coord_offset() - 1 {
+      self.offset = min(self.offset + 1,
+                        (max(0,
+                             (self.filtered.len() as isize) - (height as isize) +
+                             (self.coord_offset() as isize)) as usize));
+    } else {
+      self.cursor = min(self.cursor + 1,
+                        min(self.filtered.len() - self.offset - 1,
+                            height - self.coord_offset() - 1));
     }
   }
 
@@ -150,8 +127,6 @@ impl PecorsClient {
       self.stdin.iter().filter(|&input| re.is_match(input)).cloned().collect()
     };
 
-    self.rendered = self.filtered.clone();
-    self.selected = 0;
     self.cursor = 0;
     self.offset = 0;
   }
@@ -168,8 +143,8 @@ impl PecorsClient {
                          Color::White,
                          ' ');
 
-    for (y, item) in self.rendered.iter().enumerate() {
-      if y == self.selected_coord() {
+    for (y, item) in self.filtered.iter().skip(self.offset).enumerate() {
+      if y == self.cursor {
         self.print_line(y + self.coord_offset(), item, Color::Red, Color::White);
       } else {
         self.print_line(y + self.coord_offset(), item, Color::White, Color::Black);
