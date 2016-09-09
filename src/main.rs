@@ -16,22 +16,24 @@ use Status::*;
 
 struct PecorsClient {
   term: RustBox,
-  inputs: Vec<String>,
-  render_items: Vec<String>,
-  filtered: Vec<String>,
-  query: String,
   query_header: String,
+
+  query: String,
+
+  stdin: Vec<String>,
+  rendered: Vec<String>,
+  filtered: Vec<String>,
   selected: isize,
   cursor: isize,
   offset: usize,
 }
 
 impl PecorsClient {
-  fn new(inputs: Vec<String>, term: RustBox) -> PecorsClient {
+  fn new(stdin: Vec<String>, term: RustBox) -> PecorsClient {
     PecorsClient {
       term: term,
-      inputs: inputs,
-      render_items: Vec::new(),
+      stdin: stdin,
+      rendered: Vec::new(),
       filtered: Vec::new(),
       query: String::new(),
       query_header: "QUERY> ".to_owned(),
@@ -43,36 +45,49 @@ impl PecorsClient {
 
   fn select_item(&mut self) -> Option<String> {
     self.apply_filter();
-
     loop {
-      self.render();
-
-      let selected = self.handle_event();
-      match selected {
-        Selected(s) => return Some(s),
-        Escaped => break,
-        Continue => continue,
+      self.render_items();
+      match self.term.poll_event(false) {
+        Err(err) => panic!("Error during handle event: {:?}", err),
+        Ok(event) => {
+          match self.handle_event(event) {
+            Selected(s) => return Some(s),
+            Escaped => break,
+            Continue => continue,
+          }
+        }
       }
     }
     None
   }
 
-  fn handle_event(&mut self) -> Status {
-    match self.term.poll_event(false) {
-      Ok(KeyEvent(Key::Enter)) => return Selected(self.selected_text()),
-      Ok(KeyEvent(Key::Esc)) => return Escaped,
-      Ok(KeyEvent(Key::Up)) => self.cursor_up(),
-      Ok(KeyEvent(Key::Down)) => self.cursor_down(),
-      Ok(KeyEvent(Key::Backspace)) => self.remove_query(),
-      Ok(KeyEvent(Key::Char(c))) => self.append_query(c),
-      Ok(_) => (),
-      Err(err) => panic!("Error during handle event: {:?}", err),
+  fn handle_event(&mut self, event: rustbox::Event) -> Status {
+    match event {
+      KeyEvent(Key::Enter) => return Selected(self.selected_text()),
+      KeyEvent(Key::Esc) => return Escaped,
+      KeyEvent(Key::Up) => self.cursor_up(),
+      KeyEvent(Key::Down) => self.cursor_down(),
+      KeyEvent(Key::Backspace) => self.remove_query(),
+      KeyEvent(Key::Char(c)) => self.append_query(c),
+      _ => (),
     }
     Continue
   }
 
+  fn coord_offset(&self) -> usize {
+    1
+  }
+
+  fn query_str(&self) -> String {
+    format!("{}{}", self.query_header, self.query)
+  }
+
   fn selected_text(&self) -> String {
-    self.render_items[self.offset + self.selected as usize].clone()
+    self.rendered[self.offset + self.selected as usize].clone()
+  }
+
+  fn selected_coord(&self) -> usize {
+    self.selected as usize
   }
 
   fn append_query(&mut self, c: char) {
@@ -100,20 +115,18 @@ impl PecorsClient {
       self.selected += 1;
       if self.offset > 0 {
         self.offset -= 1;
-        self.render_items = Vec::from(&self.filtered[(self.offset as usize)..]);
+        self.rendered = Vec::from(&self.filtered[(self.offset as usize)..]);
       }
     }
   }
 
   fn cursor_down(&mut self) {
-    if self.cursor < (self.render_items.len() - 1) as isize {
+    if self.cursor < (self.rendered.len() - 1) as isize {
       self.cursor += 1;
     }
-    if (self.render_items.len() < self.term.height() - 1) &&
-       (self.selected < self.render_items.len() as isize) {
+    if (self.rendered.len() < self.term.height() - 1) && (self.selected < self.rendered.len() as isize) {
       self.selected += 1;
-    } else if (self.render_items.len() > self.term.height() - 1) &&
-              (self.selected < (self.term.height() - 1) as isize) {
+    } else if (self.rendered.len() > self.term.height() - 1) && (self.selected < (self.term.height() - 1) as isize) {
       self.selected += 1;
     }
 
@@ -121,14 +134,14 @@ impl PecorsClient {
       self.selected -= 1;
       if self.offset < self.filtered.len() - 1 {
         self.offset += 1;
-        self.render_items = Vec::from(&self.filtered[(self.offset as usize)..]);
+        self.rendered = Vec::from(&self.filtered[(self.offset as usize)..]);
       }
     }
   }
 
   fn apply_filter(&mut self) {
     self.filtered = self.filter_by_regex();
-    self.render_items = self.filtered.clone();
+    self.rendered = self.filtered.clone();
     self.selected = 0;
     self.cursor = 0;
     self.offset = 0;
@@ -136,49 +149,40 @@ impl PecorsClient {
 
   fn filter_by_regex(&self) -> Vec<String> {
     if self.query.len() == 0 {
-      self.inputs.clone()
+      self.stdin.clone()
     } else {
       let re = regex::Regex::new(self.query.as_str()).unwrap();
-      self.inputs.iter().filter(|&input| re.is_match(input)).cloned().collect()
+      self.stdin.iter().filter(|&input| re.is_match(input)).cloned().collect()
     }
   }
 
-  fn render(&self) {
+  fn render_items(&self) {
     self.term.clear();
 
-    self.print_query();
-    for (y, item) in self.render_items.iter().enumerate() {
-      self.print_line(y, item.clone(), y as isize == self.selected);
+    let query_str = self.query_str();
+    self.print_line(0, &query_str, Color::White, Color::Black);
+    self.term.print_char(query_str.len(),
+                         0,
+                         rustbox::RB_NORMAL,
+                         Color::White,
+                         Color::White,
+                         ' ');
+
+    for (y, item) in self.rendered.iter().enumerate() {
+      if y == self.selected_coord() {
+        self.print_line(y + self.coord_offset(), item, Color::Red, Color::White);
+      } else {
+        self.print_line(y + self.coord_offset(), item, Color::White, Color::Black);
+      }
     }
 
     self.term.present();
   }
 
-  fn print_query(&self) {
-    let query_str: String = format!("{}{}", self.query_header, self.query);
-
-    for x in 0..(self.term.width()) {
-      let ch = query_str.chars().nth(x).unwrap_or(' ');
-      let (fg, bg) = if x == query_str.len() {
-        (Color::White, Color::White)
-      } else {
-        (Color::White, Color::Black)
-      };
-      self.term.print_char(x, 0, rustbox::RB_NORMAL, fg, bg, ch);
-    }
-  }
-
-  fn print_line(&self, y: usize, item: String, selected: bool) {
-    let y_offset = 1;
-    let (fg, bg) = if selected {
-      (Color::Red, Color::White)
-    } else {
-      (Color::White, Color::Black)
-    };
-
+  fn print_line(&self, y: usize, item: &str, fg: Color, bg: Color) {
     for x in 0..(self.term.width()) {
       let ch = item.chars().nth(x).unwrap_or(' ');
-      self.term.print_char(x, y + y_offset, rustbox::RB_NORMAL, fg, bg, ch);
+      self.term.print_char(x, y, rustbox::RB_NORMAL, fg, bg, ch);
     }
   }
 }
