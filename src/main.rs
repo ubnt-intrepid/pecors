@@ -5,6 +5,7 @@ use std::default::Default;
 use std::io::BufRead;
 use rustbox::{Color, RustBox, Key};
 use rustbox::Event::KeyEvent;
+use regex::Regex;
 
 enum Status {
   Selected(String),
@@ -151,7 +152,7 @@ impl PecorsClient {
     if self.query.len() == 0 {
       self.stdin.clone()
     } else {
-      let re = regex::Regex::new(self.query.as_str()).unwrap();
+      let re = Regex::new(self.query.as_str()).unwrap();
       self.stdin.iter().filter(|&input| re.is_match(input)).cloned().collect()
     }
   }
@@ -190,8 +191,12 @@ impl PecorsClient {
 
 fn main() {
   // make filterd list from stdin.
+  let ansi = Regex::new(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[m|K]").unwrap();
   let stdin = std::io::stdin();
-  let inputs = stdin.lock().lines().map(|line| line.unwrap()).collect();
+  let inputs = stdin.lock()
+    .lines()
+    .map(|line| ansi.replace_all(&line.unwrap(), ""))
+    .collect();
 
   let term = RustBox::init(Default::default()).unwrap();
 
