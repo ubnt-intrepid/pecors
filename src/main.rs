@@ -27,7 +27,7 @@ struct PecorsClient {
 
 impl PecorsClient {
   fn new(stdin: Vec<String>, term: RustBox) -> PecorsClient {
-    PecorsClient {
+    let mut cli = PecorsClient {
       term: term,
       stdin: stdin,
       filtered: Vec::new(),
@@ -35,30 +35,38 @@ impl PecorsClient {
       prompt: "QUERY> ".to_owned(),
       cursor: 0,
       offset: 0,
-    }
+    };
+    cli.filtered = cli.stdin.clone();
+    cli
   }
 
-  fn select_item(&mut self) -> Option<String> {
-    self.apply_filter();
+  fn run(&mut self) -> Option<String> {
+    self.render_items();
     loop {
-      self.render_items();
       match self.term.poll_event(false) {
         Err(err) => panic!("Error during handle event: {:?}", err),
         Ok(event) => {
           match self.handle_event(event) {
             Selected(s) => return Some(s),
             Escaped => break,
-            Continue => continue,
+            _ => (),
           }
         }
       }
+      self.render_items();
     }
     None
   }
 
   fn handle_event(&mut self, event: rustbox::Event) -> Status {
     match event {
-      KeyEvent(Key::Enter) => return Selected(self.selected_text()),
+      KeyEvent(Key::Enter) => {
+        return if self.filtered.len() > 0 {
+          Selected(self.selected_text())
+        } else {
+          Escaped
+        }
+      }
       KeyEvent(Key::Esc) => return Escaped,
       KeyEvent(Key::Up) => self.cursor_up(),
       KeyEvent(Key::Down) => self.cursor_down(),
@@ -171,12 +179,16 @@ fn main() {
     .lines()
     .map(|line| ansi.replace_all(&line.unwrap(), ""))
     .collect();
-
   let term = RustBox::init(Default::default()).unwrap();
 
-  let selected = PecorsClient::new(inputs, term).select_item();
+  let selected = {
+    let mut cli = PecorsClient::new(inputs, term);
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || cli.run()))
+  };
+
   match selected {
-    Some(selected) => println!("{}", selected),
-    None => (),
+    Ok(Some(selected)) => println!("{}", selected),
+    Ok(None) => (),
+    Err(err) => panic!("Error: {:?}", err),
   }
 }
