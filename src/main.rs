@@ -59,9 +59,7 @@ impl PecorsClient {
 
   fn handle_event(&mut self) -> Status {
     match self.term.poll_event(false) {
-      Ok(KeyEvent(Key::Enter)) => {
-        return Selected(self.render_items[self.offset + self.selected as usize].clone())
-      }
+      Ok(KeyEvent(Key::Enter)) => return Selected(self.selected_text()),
       Ok(KeyEvent(Key::Esc)) => return Escaped,
       Ok(KeyEvent(Key::Up)) => self.cursor_up(),
       Ok(KeyEvent(Key::Down)) => self.cursor_down(),
@@ -71,6 +69,10 @@ impl PecorsClient {
       Err(err) => panic!("Error during handle event: {:?}", err),
     }
     Continue
+  }
+
+  fn selected_text(&self) -> String {
+    self.render_items[self.offset + self.selected as usize].clone()
   }
 
   fn append_query(&mut self, c: char) {
