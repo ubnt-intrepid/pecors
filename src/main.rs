@@ -1,12 +1,32 @@
 extern crate rustbox;
 extern crate regex;
 
-use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::cmp::{min, max};
 use std::io::BufRead;
 use rustbox::{Color, RustBox, Key};
 use rustbox::Event::KeyEvent;
 use regex::Regex;
+
+#[derive(Debug)]
+enum PecorsError {
+  RustBox(rustbox::InitError),
+  Regex(regex::Error),
+}
+
+impl From<rustbox::InitError> for PecorsError {
+  fn from(err: rustbox::InitError) -> PecorsError {
+    PecorsError::RustBox(err)
+  }
+}
+
+impl From<regex::Error> for PecorsError {
+  fn from(err: regex::Error) -> PecorsError {
+    PecorsError::Regex(err)
+  }
+}
+
+type PecorsResult<T> = Result<T, PecorsError>;
+
 
 enum Status {
   Selected(String),
@@ -53,16 +73,17 @@ impl PecorsClient {
     }
   }
 
-  fn run(&mut self) -> Option<String> {
-    let term = RustBox::init(Default::default()).unwrap();
+  // choices a line from `lines` interactively.
+  fn select_line(&mut self) -> PecorsResult<Option<String>> {
+    let term = try!(RustBox::init(Default::default()));
 
     self.render_items(&term);
     loop {
       match term.poll_event(false) {
         Err(err) => panic!("Error during handle event: {:?}", err),
         Ok(event) => {
-          match self.handle_event(&term, event) {
-            Selected(s) => return Some(s),
+          match try!(self.handle_event(&term, event)) {
+            Selected(s) => return Ok(Some(s)),
             Escaped => break,
             _ => (),
           }
@@ -70,47 +91,46 @@ impl PecorsClient {
       }
       self.render_items(&term);
     }
-    None
+    Ok(None)
   }
 
-  fn handle_event(&mut self, term: &RustBox, event: rustbox::Event) -> Status {
+  fn handle_event(&mut self, term: &RustBox, event: rustbox::Event) -> PecorsResult<Status> {
     match event {
       KeyEvent(Key::Enter) => {
-        return if self.filtered.len() > 0 {
-          Selected(self.selected_text())
+        if self.filtered.len() > 0 {
+          Ok(Selected(self.filtered[self.cursor + self.offset].clone()))
         } else {
-          Escaped
+          Ok(Escaped)
         }
       }
-      KeyEvent(Key::Esc) => return Escaped,
-      KeyEvent(Key::Up) => self.cursor_up(),
-      KeyEvent(Key::Down) => self.cursor_down(term.height()),
-      KeyEvent(Key::Backspace) => self.remove_query(),
-      KeyEvent(Key::Char(c)) => self.append_query(c),
-      _ => (),
+      KeyEvent(Key::Esc) => Ok(Escaped),
+      KeyEvent(Key::Up) => {
+        self.cursor_up();
+        Ok(Continue)
+      }
+      KeyEvent(Key::Down) => {
+        self.cursor_down(term.height());
+        Ok(Continue)
+      }
+      KeyEvent(Key::Backspace) => self.remove_query().and(Ok(Continue)),
+      KeyEvent(Key::Char(c)) => self.append_query(c).and(Ok(Continue)),
+      _ => Ok(Continue),
     }
-    Continue
   }
 
-  fn query_str(&self) -> String {
-    format!("{}{}", self.prompt, self.query)
-  }
-
-  fn selected_text(&self) -> String {
-    self.filtered[self.cursor + self.offset].clone()
-  }
-
-  fn append_query(&mut self, c: char) {
+  fn append_query(&mut self, c: char) -> PecorsResult<()> {
     self.query.push(c);
-    self.apply_filter();
+    self.apply_filter()
   }
 
-  fn remove_query(&mut self) {
-    if !self.query.is_empty() {
-      let idx = self.query.len() - 1;
-      self.query.remove(idx);
-      self.apply_filter();
+  fn remove_query(&mut self) -> PecorsResult<()> {
+    if self.query.is_empty() {
+      return Ok(());
     }
+
+    let idx = self.query.len() - 1;
+    self.query.remove(idx);
+    self.apply_filter()
   }
 
   fn cursor_up(&mut self) {
@@ -136,22 +156,24 @@ impl PecorsClient {
     }
   }
 
-  fn apply_filter(&mut self) {
+  fn apply_filter(&mut self) -> PecorsResult<()> {
     self.filtered = if self.query.len() == 0 {
       self.lines.clone()
     } else {
-      let re = Regex::new(self.query.as_str()).unwrap();
+      let re = try!(Regex::new(self.query.as_str()));
       self.lines.iter().filter(|&input| re.is_match(input)).cloned().collect()
     };
 
     self.cursor = 0;
     self.offset = 0;
+
+    Ok(())
   }
 
   fn render_items(&self, term: &RustBox) {
     term.clear();
 
-    let query_str = self.query_str();
+    let query_str = format!("{}{}", self.prompt, self.query);
     term.print_line(0, &query_str, Color::White, Color::Black);
 
     for (y, item) in self.filtered.iter().skip(self.offset).enumerate() {
@@ -179,11 +201,10 @@ fn main() {
     .collect();
 
   let mut cli = PecorsClient::new(inputs);
-  let selected = catch_unwind(AssertUnwindSafe(move || cli.run()));
 
+  let selected = cli.select_line().unwrap();
   match selected {
-    Ok(Some(selected)) => println!("{}", selected),
-    Ok(None) => (),
-    Err(err) => panic!("Error: {:?}", err),
+    Some(line) => println!("{}", line),
+    None => (),
   }
 }
