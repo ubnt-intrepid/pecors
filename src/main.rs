@@ -31,7 +31,7 @@ impl PrintLine for RustBox {
 struct PecorsClient {
   prompt: String,
   y_offset: usize,
-  stdin: Vec<String>,
+  lines: Vec<String>,
 
   filtered: Vec<String>,
   query: String,
@@ -40,18 +40,17 @@ struct PecorsClient {
 }
 
 impl PecorsClient {
-  fn new(stdin: Vec<String>) -> PecorsClient {
-    let mut cli = PecorsClient {
-      stdin: stdin,
-      filtered: Vec::new(),
+  fn new(lines: Vec<String>) -> PecorsClient {
+    let filtered = lines.clone();
+    PecorsClient {
+      lines: lines,
+      filtered: filtered,
       query: String::new(),
       prompt: "QUERY> ".to_owned(),
       y_offset: 1,
       cursor: 0,
       offset: 0,
-    };
-    cli.filtered = cli.stdin.clone();
-    cli
+    }
   }
 
   fn run(&mut self) -> Option<String> {
@@ -139,10 +138,10 @@ impl PecorsClient {
 
   fn apply_filter(&mut self) {
     self.filtered = if self.query.len() == 0 {
-      self.stdin.clone()
+      self.lines.clone()
     } else {
       let re = Regex::new(self.query.as_str()).unwrap();
-      self.stdin.iter().filter(|&input| re.is_match(input)).cloned().collect()
+      self.lines.iter().filter(|&input| re.is_match(input)).cloned().collect()
     };
 
     self.cursor = 0;
