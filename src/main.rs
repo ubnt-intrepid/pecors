@@ -14,6 +14,18 @@ enum Status {
 }
 use Status::*;
 
+trait PrintLine {
+  fn print_line(&self, y: usize, item: &str, fg: Color, bg: Color);
+}
+
+impl PrintLine for RustBox {
+  fn print_line(&self, y: usize, item: &str, fg: Color, bg: Color) {
+    for x in 0..(self.width()) {
+      let ch = item.chars().nth(x).unwrap_or(' ');
+      self.print_char(x, y, rustbox::RB_NORMAL, fg, bg, ch);
+    }
+  }
+}
 
 struct PecorsClient {
   term: RustBox,
@@ -143,7 +155,7 @@ impl PecorsClient {
     self.term.clear();
 
     let query_str = self.query_str();
-    self.print_line(0, &query_str, Color::White, Color::Black);
+    self.term.print_line(0, &query_str, Color::White, Color::Black);
     self.term.print_char(query_str.len(),
                          0,
                          rustbox::RB_NORMAL,
@@ -153,20 +165,13 @@ impl PecorsClient {
 
     for (y, item) in self.filtered.iter().skip(self.offset).enumerate() {
       if y == self.cursor {
-        self.print_line(y + self.coord_offset(), item, Color::Red, Color::White);
+        self.term.print_line(y + self.coord_offset(), item, Color::Red, Color::White);
       } else {
-        self.print_line(y + self.coord_offset(), item, Color::White, Color::Black);
+        self.term.print_line(y + self.coord_offset(), item, Color::White, Color::Black);
       }
     }
 
     self.term.present();
-  }
-
-  fn print_line(&self, y: usize, item: &str, fg: Color, bg: Color) {
-    for x in 0..(self.term.width()) {
-      let ch = item.chars().nth(x).unwrap_or(' ');
-      self.term.print_char(x, y, rustbox::RB_NORMAL, fg, bg, ch);
-    }
   }
 }
 
