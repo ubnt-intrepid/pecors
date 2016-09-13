@@ -1,6 +1,7 @@
 extern crate rustbox;
 extern crate regex;
 
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::cmp::{min, max};
 use std::io::BufRead;
 use rustbox::{Color, RustBox, Key};
@@ -28,7 +29,6 @@ impl PrintLine for RustBox {
 }
 
 struct PecorsClient {
-  term: RustBox,
   prompt: String,
   query: String,
   stdin: Vec<String>,
@@ -38,9 +38,8 @@ struct PecorsClient {
 }
 
 impl PecorsClient {
-  fn new(stdin: Vec<String>, term: RustBox) -> PecorsClient {
+  fn new(stdin: Vec<String>) -> PecorsClient {
     let mut cli = PecorsClient {
-      term: term,
       stdin: stdin,
       filtered: Vec::new(),
       query: String::new(),
@@ -53,24 +52,26 @@ impl PecorsClient {
   }
 
   fn run(&mut self) -> Option<String> {
-    self.render_items();
+    let term = RustBox::init(Default::default()).unwrap();
+
+    self.render_items(&term);
     loop {
-      match self.term.poll_event(false) {
+      match term.poll_event(false) {
         Err(err) => panic!("Error during handle event: {:?}", err),
         Ok(event) => {
-          match self.handle_event(event) {
+          match self.handle_event(&term, event) {
             Selected(s) => return Some(s),
             Escaped => break,
             _ => (),
           }
         }
       }
-      self.render_items();
+      self.render_items(&term);
     }
     None
   }
 
-  fn handle_event(&mut self, event: rustbox::Event) -> Status {
+  fn handle_event(&mut self, term: &RustBox, event: rustbox::Event) -> Status {
     match event {
       KeyEvent(Key::Enter) => {
         return if self.filtered.len() > 0 {
@@ -81,7 +82,7 @@ impl PecorsClient {
       }
       KeyEvent(Key::Esc) => return Escaped,
       KeyEvent(Key::Up) => self.cursor_up(),
-      KeyEvent(Key::Down) => self.cursor_down(),
+      KeyEvent(Key::Down) => self.cursor_down(term.height()),
       KeyEvent(Key::Backspace) => self.remove_query(),
       KeyEvent(Key::Char(c)) => self.append_query(c),
       _ => (),
@@ -124,9 +125,7 @@ impl PecorsClient {
     }
   }
 
-  fn cursor_down(&mut self) {
-    let height = self.term.height();
-
+  fn cursor_down(&mut self, height: usize) {
     if self.cursor == height - self.coord_offset() - 1 {
       self.offset = min(self.offset + 1,
                         (max(0,
@@ -151,27 +150,27 @@ impl PecorsClient {
     self.offset = 0;
   }
 
-  fn render_items(&self) {
-    self.term.clear();
+  fn render_items(&self, term: &RustBox) {
+    term.clear();
 
     let query_str = self.query_str();
-    self.term.print_line(0, &query_str, Color::White, Color::Black);
-    self.term.print_char(query_str.len(),
-                         0,
-                         rustbox::RB_NORMAL,
-                         Color::White,
-                         Color::White,
-                         ' ');
+    term.print_line(0, &query_str, Color::White, Color::Black);
+    term.print_char(query_str.len(),
+                    0,
+                    rustbox::RB_NORMAL,
+                    Color::White,
+                    Color::White,
+                    ' ');
 
     for (y, item) in self.filtered.iter().skip(self.offset).enumerate() {
       if y == self.cursor {
-        self.term.print_line(y + self.coord_offset(), item, Color::Red, Color::White);
+        term.print_line(y + self.coord_offset(), item, Color::Red, Color::White);
       } else {
-        self.term.print_line(y + self.coord_offset(), item, Color::White, Color::Black);
+        term.print_line(y + self.coord_offset(), item, Color::White, Color::Black);
       }
     }
 
-    self.term.present();
+    term.present();
   }
 }
 
@@ -184,12 +183,9 @@ fn main() {
     .lines()
     .map(|line| ansi.replace_all(&line.unwrap(), ""))
     .collect();
-  let term = RustBox::init(Default::default()).unwrap();
 
-  let selected = {
-    let mut cli = PecorsClient::new(inputs, term);
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || cli.run()))
-  };
+  let mut cli = PecorsClient::new(inputs);
+  let selected = catch_unwind(AssertUnwindSafe(move || cli.run()));
 
   match selected {
     Ok(Some(selected)) => println!("{}", selected),
