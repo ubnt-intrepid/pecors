@@ -146,9 +146,7 @@ impl PecorsClient {
   fn cursor_down(&mut self, height: usize) {
     if self.cursor == height - self.y_offset - 1 {
       self.offset = min(self.offset + 1,
-                        (max(0,
-                             (self.filtered.len() as isize) - (height as isize) +
-                             (self.y_offset as isize)) as usize));
+                        max(0, self.filtered.len() - height + self.y_offset));
     } else {
       self.cursor = min(self.cursor + 1,
                         min(self.filtered.len() - self.offset - 1,
@@ -173,10 +171,8 @@ impl PecorsClient {
   fn render_items(&self, term: &RustBox) {
     term.clear();
 
-    let query_str = format!("{}{}", self.prompt, self.query);
-    term.print_line(0, &query_str, Color::White, Color::Black);
-
-    for (y, item) in self.filtered.iter().skip(self.offset).enumerate() {
+    // print filtered lines if visible.
+    for (y, item) in self.filtered.iter().skip(self.offset).take(term.height() - self.y_offset).enumerate() {
       if y == self.cursor {
         term.print_line(y + self.y_offset, item, Color::Red, Color::White);
       } else {
@@ -184,6 +180,9 @@ impl PecorsClient {
       }
     }
 
+    // print query line and move the cursor to end.
+    let query_str = format!("{}{}", self.prompt, self.query);
+    term.print_line(0, &query_str, Color::White, Color::Black);
     term.set_cursor(query_str.len() as isize, 0);
 
     term.present();
