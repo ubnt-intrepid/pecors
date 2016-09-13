@@ -30,9 +30,11 @@ impl PrintLine for RustBox {
 
 struct PecorsClient {
   prompt: String,
-  query: String,
+  y_offset: usize,
   stdin: Vec<String>,
+
   filtered: Vec<String>,
+  query: String,
   cursor: usize,
   offset: usize,
 }
@@ -44,6 +46,7 @@ impl PecorsClient {
       filtered: Vec::new(),
       query: String::new(),
       prompt: "QUERY> ".to_owned(),
+      y_offset: 1,
       cursor: 0,
       offset: 0,
     };
@@ -90,10 +93,6 @@ impl PecorsClient {
     Continue
   }
 
-  fn coord_offset(&self) -> usize {
-    1
-  }
-
   fn query_str(&self) -> String {
     format!("{}{}", self.prompt, self.query)
   }
@@ -126,15 +125,15 @@ impl PecorsClient {
   }
 
   fn cursor_down(&mut self, height: usize) {
-    if self.cursor == height - self.coord_offset() - 1 {
+    if self.cursor == height - self.y_offset - 1 {
       self.offset = min(self.offset + 1,
                         (max(0,
                              (self.filtered.len() as isize) - (height as isize) +
-                             (self.coord_offset() as isize)) as usize));
+                             (self.y_offset as isize)) as usize));
     } else {
       self.cursor = min(self.cursor + 1,
                         min(self.filtered.len() - self.offset - 1,
-                            height - self.coord_offset() - 1));
+                            height - self.y_offset - 1));
     }
   }
 
@@ -164,9 +163,9 @@ impl PecorsClient {
 
     for (y, item) in self.filtered.iter().skip(self.offset).enumerate() {
       if y == self.cursor {
-        term.print_line(y + self.coord_offset(), item, Color::Red, Color::White);
+        term.print_line(y + self.y_offset, item, Color::Red, Color::White);
       } else {
-        term.print_line(y + self.coord_offset(), item, Color::White, Color::Black);
+        term.print_line(y + self.y_offset, item, Color::White, Color::Black);
       }
     }
 
