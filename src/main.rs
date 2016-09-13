@@ -154,12 +154,6 @@ impl PecorsClient {
 
     let query_str = self.query_str();
     term.print_line(0, &query_str, Color::White, Color::Black);
-    term.print_char(query_str.len(),
-                    0,
-                    rustbox::RB_NORMAL,
-                    Color::White,
-                    Color::White,
-                    ' ');
 
     for (y, item) in self.filtered.iter().skip(self.offset).enumerate() {
       if y == self.cursor {
@@ -168,6 +162,8 @@ impl PecorsClient {
         term.print_line(y + self.y_offset, item, Color::White, Color::Black);
       }
     }
+
+    term.set_cursor(query_str.len() as isize, 0);
 
     term.present();
   }
