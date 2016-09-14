@@ -1,7 +1,7 @@
 [package]
 name = "pecors"
 version = "0.0.1"
-authors = ["ubuntu"]
+authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 
 [dependencies]
 regex = "*"
