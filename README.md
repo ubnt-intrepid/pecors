@@ -1,5 +1,5 @@
 # pecors
-Alternative of fuzzy text selector (e.g. `peco`) written Rust.
+An alternative of interactive text selector written in Rust.
 
 ## License
 Copyright (c) 2016, Yusuke Sasaki
