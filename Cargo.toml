@@ -3,6 +3,13 @@ name = "pecors"
 version = "0.0.1"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "pecors"
+path = "src/main.rs"
+
 [dependencies]
 regex = "*"
 rustbox = "*"
